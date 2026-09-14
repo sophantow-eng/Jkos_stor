@@ -1,1 +1,0 @@
-# Jkos_stor
