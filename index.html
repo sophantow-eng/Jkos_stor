@@ -2291,84 +2291,77 @@ html:not([data-theme^="cat"]){--cat-brand:url("data:image/svg+xml,%3Csvg xmlns='
   <div class="app-loader-foot">Packaging &amp; Stock System</div>
 </div>
 <script>
-  // Drives the loading-screen progress bar/percentage from the very
-  // first moment the page paints, and acts as a hard safety net: no
-  // matter what happens in the main bundle below, the user is never
-  // left staring at a stuck loading screen or hidden content.
-  //
-  // TARGET_MS is a deliberate minimum display time (not how long the
-  // app actually takes to boot — this is a static page, it's ready
-  // almost instantly). It exists so the loader's own entrance/shelving
-  // animation gets to play out in full rather than being cut off
-  // mid-way, which read as a jarring flash rather than a smooth,
-  // intentional transition.
+  // หน้าโหลดแบบตามความเร็วเน็ตจริง: แถบความคืบหน้าขยับตามสถานะที่โหลดจริง
+  // (อ่านหน้าเสร็จ → ฟอนต์ → ทรัพยากรครบ → ระบบพร้อม) และเข้าแอปทันทีที่พร้อม
+  // โดยมีเวลาแสดงขั้นต่ำสั้นๆ เพื่อไม่ให้ภาพกะพริบ (เปิดซ้ำ = สั้นกว่าเปิดครั้งแรก)
+  // เน็ตช้าจะบอกสถานะตามจริง และมีตัวกันค้าง: ไม่ว่าเกิดอะไรขึ้นก็ไม่ปล่อยให้ค้างหน้าโหลด
   (function () {
-    var START = window.performance && performance.now ? performance.now() : Date.now();
-    var TARGET_MS = 4900;
+    var now = function () { return window.performance && performance.now ? performance.now() : Date.now(); };
+    var START = now();
     var fill = document.getElementById('app-loader-fill');
     var percentEl = document.getElementById('app-loader-percent');
     var statusEl = document.getElementById('app-loader-status');
-    var now = function () { return window.performance && performance.now ? performance.now() : Date.now(); };
-    // Staged "boot sequence" curve rather than one flat ease: a quick
-    // initial climb, a steady mid push, then a deliberate slow crawl near
-    // the end — reads like shelves actually being loaded one at a time,
-    // not a fake ramp with no story to it.
-    var STAGES = [
-      { t: 0,    p: 0 },
-      { t: .12,  p: 18 },
-      { t: .32,  p: 44 },
-      { t: .58,  p: 68 },
-      { t: .82,  p: 88 },
-      { t: 1,    p: 100 }
-    ];
-    function curve(t) {
-      for (var i = 1; i < STAGES.length; i++) {
-        if (t <= STAGES[i].t) {
-          var a = STAGES[i - 1], b = STAGES[i];
-          var localT = (t - a.t) / (b.t - a.t || 1);
-          var eased = 1 - Math.pow(1 - localT, 2);
-          return a.p + (b.p - a.p) * eased;
-        }
-      }
-      return 100;
+    var barEl = fill && fill.parentNode;
+    var conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection || {};
+    var slow = !!(conn.saveData || /(^|-)2g$/.test(conn.effectiveType || '') || (conn.downlink && conn.downlink < 0.7));
+    var seen = false; try { seen = !!localStorage.getItem('jk-seen-v1'); } catch (e) {}
+    var MIN_MS = seen ? 700 : 1500;
+    var MAX_MS = slow ? 20000 : 12000;
+    var done = { parsed: document.readyState !== 'loading', fonts: false, load: document.readyState === 'complete', app: false };
+    function mark(k) { done[k] = true; }
+    if (!done.parsed) document.addEventListener('DOMContentLoaded', function () { mark('parsed'); });
+    if (!done.load) window.addEventListener('load', function () { mark('load'); });
+    try { if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { mark('fonts'); }); else done.fonts = true; } catch (e) { done.fonts = true; }
+    window.setTimeout(function () { mark('fonts'); }, 3500); // ฟอนต์ช้า ไม่ต้องรอ
+    function ceil() {
+      if (done.app) return 100;
+      if (done.load) return 94;
+      if (done.fonts) return 78;
+      if (done.parsed) return 58;
+      return 28;
     }
-    var MESSAGES = [
-      { t: 0,   text: 'กำลังเริ่มต้นระบบ' },
-      { t: .18, text: 'กำลังจัดเรียงสินค้าเข้าชั้นวาง' },
-      { t: .42, text: 'กำลังซิงค์ข้อมูลคลังสินค้า' },
-      { t: .68, text: 'กำลังเตรียมแดชบอร์ด' },
-      { t: .88, text: 'เกือบพร้อมแล้ว' }
+    var MSG = [
+      { s: function () { return !done.parsed; }, t: 'กำลังเริ่มต้นระบบ' },
+      { s: function () { return !done.fonts; }, t: 'กำลังโหลดหน้าจอและตัวอักษร' },
+      { s: function () { return !done.load; }, t: 'กำลังโหลดข้อมูลระบบ' },
+      { s: function () { return !done.app; }, t: 'กำลังเตรียมแดชบอร์ด' }
     ];
-    var msgIndex = -1;
-    function updateStatus(t) {
-      var next = 0;
-      for (var i = 0; i < MESSAGES.length; i++) { if (t >= MESSAGES[i].t) next = i; }
-      if (next !== msgIndex && statusEl) {
-        msgIndex = next;
-        statusEl.style.opacity = '0';
-        window.setTimeout(function () {
-          statusEl.textContent = MESSAGES[msgIndex].text;
-          statusEl.style.opacity = '1';
-        }, 140);
-      }
+    var msgText = '';
+    function setStatus(t) {
+      if (t === msgText || !statusEl) return;
+      msgText = t; statusEl.style.opacity = '0';
+      window.setTimeout(function () { statusEl.textContent = t; statusEl.style.opacity = '1'; }, 120);
     }
     var raf = window.requestAnimationFrame || function (cb) { return window.setTimeout(cb, 16); };
     var caf = window.cancelAnimationFrame || window.clearTimeout;
-    var rafId = null;
+    var rafId = null, pct = 0, last = now(), stopped = false;
     function tick() {
-      var t = Math.min(1, (now() - START) / TARGET_MS);
-      var pct = curve(t);
-      if (fill) fill.style.width = pct + '%';
-      if (percentEl) percentEl.textContent = Math.round(pct) + '%';
-      updateStatus(t);
-      if (t < 1) rafId = raf(tick);
+      var t = now(), dt = Math.min(0.1, (t - last) / 1000); last = t;
+      var el = t - START, c = ceil();
+      // ถึง 100% ได้ก็ต่อเมื่อพร้อมจริงและครบเวลาแสดงขั้นต่ำ
+      if (c >= 100 && el < MIN_MS) c = 94 + 6 * (el / MIN_MS);
+      var target = c >= 100 ? 100 : Math.max(0, c - 1.5);
+      pct += (target - pct) * Math.min(1, dt * (c >= 100 ? 9 : 2.6)) + (pct < target ? dt * 0.8 : 0);
+      if (pct > 100) pct = 100;
+      if (fill) fill.style.width = pct.toFixed(1) + '%';
+      var shown = Math.round(pct);
+      if (percentEl) percentEl.textContent = shown + '%';
+      if (barEl) { barEl.setAttribute('role', 'progressbar'); barEl.setAttribute('aria-valuemin', '0'); barEl.setAttribute('aria-valuemax', '100'); barEl.setAttribute('aria-valuenow', shown); }
+      var msg = 'กำลังเริ่มต้นระบบ';
+      for (var i = 0; i < MSG.length; i++) { if (MSG[i].s()) { msg = MSG[i].t; break; } }
+      if (done.app) msg = pct >= 97 ? 'พร้อมใช้งาน' : 'กำลังเตรียมแดชบอร์ด';
+      else if (el > 4500 && !done.load) msg = 'เครือข่ายช้า กำลังโหลดต่อ… (เปิดครั้งหน้าจะเร็วขึ้น)';
+      setStatus(msg);
+      if (!stopped) rafId = raf(tick);
     }
     rafId = raf(tick);
     function stopProgress() {
-      if (rafId != null) caf(rafId);
+      stopped = true; if (rafId != null) caf(rafId);
       if (fill) fill.style.width = '100%';
       if (percentEl) percentEl.textContent = '100%';
+      if (barEl) barEl.setAttribute('aria-valuenow', '100');
       if (statusEl) { statusEl.style.opacity = '1'; statusEl.textContent = 'พร้อมใช้งาน'; }
+      try { localStorage.setItem('jk-seen-v1', '1'); } catch (e) {}
     }
     function forceReveal() {
       stopProgress();
@@ -2376,10 +2369,9 @@ html:not([data-theme^="cat"]){--cat-brand:url("data:image/svg+xml,%3Csvg xmlns='
       var loader = document.getElementById('app-loader');
       if (loader && loader.parentNode) loader.parentNode.removeChild(loader);
     }
-    window.__jkosLoader = { start: START, targetMs: TARGET_MS, stopProgress: stopProgress };
-    // Safety net only — if something upstream genuinely hangs, don't
-    // leave the person staring at the loader forever.
-    window.setTimeout(forceReveal, TARGET_MS + 2500);
+    window.__jkosLoader = { start: START, targetMs: MIN_MS, slow: slow, stopProgress: stopProgress, mark: mark };
+    // ตัวกันค้างเท่านั้น: ถ้าระบบหลักค้างจริง ก็ไม่ปล่อยให้ผู้ใช้เห็นหน้าโหลดตลอดไป
+    window.setTimeout(forceReveal, MAX_MS);
   })();
 </script>
 <div id="bg-image-layer" class="bg-image-layer" aria-hidden="true">
@@ -6628,6 +6620,19 @@ html.jk-ios #sb-ov .seg button:active,html.jk-ios #sb-ov .chip:active,html.jk-io
 #sb-dt .scanbtns button:disabled{opacity:.5}
 #sb-dt .scanmsg{margin-top:10px;font-size:13.5px;line-height:1.55;color:var(--sb-soft)}
 #sb-dt .scanmsg.ok{color:#16a34a;font-weight:600}#sb-dt .scanmsg.warn{color:#d97706;font-weight:600}#sb-dt .scanmsg.bad{color:#dc2626;font-weight:600}
+#sb-dt .pjobs{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 8px}
+#sb-dt .pchip{display:inline-flex;align-items:center;min-height:44px;border-radius:999px;border:1.5px solid var(--sb-line2);background:var(--sb-card);color:var(--sb-ink);font:inherit;font-size:15px;font-weight:700;overflow:hidden}
+#sb-dt .pchip>button{min-height:44px;border:0;background:transparent;color:inherit;font:inherit;padding:0 14px;cursor:pointer}
+#sb-dt .pchip>button.x{padding:0 12px 0 4px;opacity:.55;font-size:14px}
+#sb-dt .pchip.on{background:var(--sb-brand);border-color:var(--sb-brand);color:#fff}
+#sb-dt .pchip.rec{border-style:dashed;font-weight:600}
+#sb-dt .padd{min-height:44px;padding:0 16px;border-radius:999px;border:1.5px dashed var(--sb-brand);background:transparent;color:var(--sb-brand);font:inherit;font-size:15px;font-weight:800;cursor:pointer}
+#sb-dt .pnums{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin:4px 0 12px}
+#sb-dt .pnums button{min-height:46px;border-radius:12px;border:1.5px solid var(--sb-line2);background:var(--sb-card);color:var(--sb-ink);font:inherit;font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;cursor:pointer}
+#sb-dt .pnums button.on{background:var(--sb-brand);border-color:var(--sb-brand);color:#fff}
+#sb-dt .pnums button.none{grid-column:span 2;font-size:14px;font-weight:700}
+#sb-dt .phint{font-size:12.5px;color:var(--sb-soft);margin:0 0 6px}
+#sb-dt .cta.alt{margin-top:8px;background:transparent;color:var(--sb-brand);border:2px solid var(--sb-brand)}
 #sb-dt input.aiok{border-color:#16a34a!important;box-shadow:0 0 0 3px rgba(22,163,74,.25)}
 #sb-dt input.aiwarn{border-color:#eab308!important;box-shadow:0 0 0 3px rgba(234,179,8,.35)}
 
@@ -6814,6 +6819,7 @@ html.jk-ios #sb-ov .seg button:active,html.jk-ios #sb-ov .chip:active,html.jk-io
       else if (e.target.closest('[data-sec]')) pickSection(e.target.closest('[data-sec]').dataset.sec);
       else if (e.target.closest('[data-pco]')) { const b = e.target.closest('[data-pco]'); preCo = preCo === b.dataset.pco ? '' : b.dataset.pco; dt.querySelectorAll('[data-pco]').forEach((x) => { const on = x.dataset.pco === preCo; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on); }); }
       else if (e.target.closest('[data-psec]')) { const b = e.target.closest('[data-psec]'); preSec = preSec === b.dataset.psec ? '' : b.dataset.psec; dt.querySelectorAll('[data-psec]').forEach((x) => { const on = x.dataset.psec === preSec; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on); }); }
+      else if (e.target.closest('[data-a=pre-save-next]')) savePre(true);
       else if (e.target.closest('[data-a=pre-save]')) savePre();
       else if (e.target.closest('[data-a=pre-photo]')) { const f = document.getElementById('sb-p-cam'); if (f) f.click(); }
       else if (e.target.closest('[data-a=pre-pick]')) { const f = document.getElementById('sb-p-pic'); if (f) f.click(); }
@@ -7187,6 +7193,68 @@ html.jk-ios #sb-ov .seg button:active,html.jk-ios #sb-ov .chip:active,html.jk-io
     const normN = (v) => String(v || '').toLowerCase().split(/[\s,;，]+/).filter(Boolean).join(', ');
     let preUnit = 'pcs', preUnitMan = false;
     function setPreUnit(u, man) { preUnit = u === 'g' ? 'g' : 'pcs'; if (man) preUnitMan = true; dt.querySelectorAll('[data-punit]').forEach((b) => b.classList.toggle('on', b.dataset.punit === preUnit)); const l = document.getElementById('sb-p-ql'); if (l) l.textContent = 'ยอดงาน (' + (preUnit === 'g' ? 'กรัม' : 'ชิ้น') + ')'; }
+    // ===== เลือกงาน / เพิ่มงานไว้เลือกครั้งหน้า / ปุ่มเลือกเบอร์ (ลงใบเบิกล่วงหน้า) =====
+    const PJ_KEY = 'jkos_pre_jobs_v1', PN_MAX = 24;
+    let preBase = '', preNum = '';
+    const splitJob = (v) => { const t = String(v || '').trim(), m = t.match(/^(.*?)[\s]*(?:#|เบอร์\s*)\s*(\d{1,3})\s*$/i); return m ? { base: m[1].trim(), num: m[2] } : { base: t, num: '' }; };
+    const pad2 = (n) => String(n).length < 2 ? '0' + n : String(n);
+    function pjLoad() { try { const a = JSON.parse(adapter.getItem(PJ_KEY) || '[]'); return Array.isArray(a) ? a.filter((x) => x && x.n) : []; } catch (e) { return []; } }
+    function pjSave(a) { try { adapter.setItem(PJ_KEY, JSON.stringify(a.slice(0, 40))); } catch (e) {} }
+    function pjRecent(saved) {
+      const have = new Set(saved.map((x) => x.n.toLowerCase())), out = [], seen = new Set();
+      rows.slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))).forEach((r) => {
+        const b = splitJob(r.job_name).base; if (!b) return; const k = b.toLowerCase();
+        if (have.has(k) || seen.has(k) || out.length >= 8) return; seen.add(k); out.push(b);
+      });
+      return out;
+    }
+    function pjChipsH() {
+      const sv = pjLoad(), rc = pjRecent(sv), cur = (preBase || '').toLowerCase();
+      let h = sv.map((x, i) => '<span class="pchip' + (x.n.toLowerCase() === cur ? ' on' : '') + '"><button type="button" data-pj="' + i + '">⭐ ' + esc(x.n) + '</button><button type="button" class="x" data-pjdel="' + i + '" aria-label="ลบ ' + esc(x.n) + ' ออกจากรายการ">✕</button></span>').join('');
+      h += rc.map((n, i) => '<span class="pchip rec' + (n.toLowerCase() === cur ? ' on' : '') + '"><button type="button" data-pjr="' + i + '" data-n="' + esc(n) + '">🕘 ' + esc(n) + '</button></span>').join('');
+      return (h || '<span class="phint">ยังไม่มีงานที่บันทึกไว้ — พิมพ์ชื่องานแล้วกด “เพิ่มงานไว้เลือก” ครั้งหน้าแตะเลือกได้เลย</span>') + '<button type="button" class="padd" data-a="pj-add">➕ เพิ่มงานไว้เลือก</button>';
+    }
+    function pjNumsH() {
+      let h = '';
+      for (let i = 1; i <= PN_MAX; i++) h += '<button type="button" data-pn="' + pad2(i) + '"' + (pad2(i) === preNum ? ' class="on"' : '') + '>' + pad2(i) + '</button>';
+      return h + '<button type="button" class="none" data-pn="">ไม่มีเบอร์</button>';
+    }
+    function pjPaint() { const a = document.getElementById('sb-p-jobs'); if (a) a.innerHTML = pjChipsH(); const b = document.getElementById('sb-p-nums'); if (b) b.innerHTML = pjNumsH(); }
+    function pjApply(focusNext) {
+      const inp = document.getElementById('sb-p-job'); if (!inp) return;
+      inp.value = preBase ? preBase + (preNum ? ' #' + preNum : '') : (preNum ? '#' + preNum : '');
+      inp.classList.remove('aiok', 'aiwarn');
+      if (!preUnitMan) setPreUnit(/(^|[^a-z])bulk([^a-z]|$)/i.test(inp.value) ? 'g' : 'pcs', false);
+      pjPaint();
+      if (focusNext) { const no = document.getElementById('sb-p-no'), q = document.getElementById('sb-p-qty'); const f = no && !no.value ? no : (q && !q.value ? q : null); if (f) f.focus(); }
+    }
+    function pjPickPreset(x) {
+      const sp = splitJob(x.n); preBase = sp.base; if (sp.num) preNum = sp.num;
+      if (x.u) setPreUnit(x.u, true);
+      if (x.co && CO[x.co]) { preCo = x.co; dt.querySelectorAll('[data-pco]').forEach((b) => { const on = b.dataset.pco === preCo; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }); }
+      if (x.sec && SEC[x.sec] && !lockSec()) { preSec = x.sec; dt.querySelectorAll('[data-psec]').forEach((b) => { const on = b.dataset.psec === preSec; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }); }
+      pjApply(true);
+    }
+    function pjAdd() {
+      const inp = document.getElementById('sb-p-job'), name = splitJob(inp && inp.value).base;
+      if (!name) { showToast('พิมพ์ชื่องานก่อน แล้วกด “เพิ่มงานไว้เลือก”', 'error'); if (inp) inp.focus(); return; }
+      const a = pjLoad(), k = name.toLowerCase(), item = { n: name, u: preUnit, co: preCo || '', sec: preSec || '' }, i = a.findIndex((x) => x.n.toLowerCase() === k);
+      if (i >= 0) a[i] = item; else a.unshift(item);
+      pjSave(a); preBase = name; pjPaint(); showToast((i >= 0 ? 'อัปเดต' : 'เพิ่ม') + ' “' + name + '” ไว้ในรายการงานแล้ว', 'success');
+    }
+    dt.addEventListener('click', (e) => {
+      const t = e.target; if (!t || !t.closest) return;
+      const del = t.closest('[data-pjdel]'), pj = t.closest('[data-pj]'), pr = t.closest('[data-pjr]'), pn = t.closest('[data-pn]');
+      if (del) { const a = pjLoad(), x = a[+del.dataset.pjdel]; if (x && confirm('ลบ “' + x.n + '” ออกจากรายการงาน?')) { a.splice(+del.dataset.pjdel, 1); pjSave(a); if (preBase.toLowerCase() === x.n.toLowerCase()) preBase = ''; pjPaint(); } }
+      else if (pj) { const x = pjLoad()[+pj.dataset.pj]; if (x) pjPickPreset(x); }
+      else if (pr) { pjPickPreset({ n: pr.dataset.n }); }
+      else if (pn) { const v = pn.dataset.pn; const cur = splitJob((document.getElementById('sb-p-job') || {}).value); if (!preBase) preBase = cur.base; preNum = (v && v === preNum) ? '' : v; pjApply(false); }
+      else if (t.closest('[data-a=pj-add]')) pjAdd();
+    });
+    dt.addEventListener('input', (e) => {
+      const t = e.target; if (!t || t.id !== 'sb-p-job') return;
+      const sp = splitJob(t.value); preBase = sp.base; preNum = sp.num; pjPaint();
+    });
     // ===== ถ่ายรูปใบเบิก → AI อ่านเลขใบเบิก/MO/ชื่องาน/ยอดงาน (ผ่าน Supabase Edge Function read-requisition) =====
     let preScanBusy = false;
     async function preImg(file) {
@@ -7488,8 +7556,9 @@ html.jk-ios #sb-ov .seg button:active,html.jk-ios #sb-ov .chip:active,html.jk-io
     }
     dt.addEventListener('change', (e) => { const t = e.target; if (t && (t.id === 'sb-p-cam' || t.id === 'sb-p-pic') && t.files && t.files[0]) preScan(t.files[0]); });
     dt.addEventListener('input', (e) => { const t = e.target; if (t && t.classList && t.id && t.id.indexOf('sb-p-') === 0) t.classList.remove('aiok', 'aiwarn'); });
-    function showPre() {
-      skin(); preSec = mySec; preCo = myCo; preUnit = 'pcs'; preUnitMan = false;
+    function showPre(keep) {
+      skin(); preSec = mySec; preCo = myCo; preUnit = 'pcs'; preUnitMan = false; preBase = ''; preNum = '';
+      if (keep) { preBase = keep.base || ''; preNum = keep.num || ''; preCo = keep.co != null ? keep.co : preCo; preSec = keep.sec != null ? keep.sec : preSec; preUnit = keep.unit || 'pcs'; preUnitMan = !!keep.man; }
       const inp = 'width:100%;box-sizing:border-box;min-height:50px;padding:10px 12px;border:1px solid var(--sb-line2);border-radius:var(--rb);font-size:16px;margin:4px 0 12px;background:var(--sb-card);color:var(--sb-ink)';
       dt.innerHTML = '<div class="w"><div class="hd"><b>➕ ลงใบเบิกล่วงหน้า</b><button data-x="1">ปิด</button></div>' +
         '<div class="m">ใส่ข้อมูลเบื้องต้นก่อน ผู้จัดค่อยมากดจัดบิลแล้วใส่รายละเอียดทีหลัง</div>' +
@@ -7498,15 +7567,17 @@ html.jk-ios #sb-ov .seg button:active,html.jk-ios #sb-ov .chip:active,html.jk-io
         '<input id="sb-p-cam" type="file" accept="image/*" capture="environment" hidden><input id="sb-p-pic" type="file" accept="image/*" hidden></div>' +
         '<label class="m">เลขที่ใบเบิก (หลายใบคั่นด้วย , ต้องเป็นงานเดียวกัน)</label><input id="sb-p-no" style="' + inp + '" placeholder="imc2610012" autocapitalize="off" autocorrect="off">' +
         '<label class="m">MO</label><input id="sb-p-mo" style="' + inp + '" placeholder="jk2603172" autocapitalize="off" autocorrect="off">' +
-        '<label class="m">ชื่องาน</label><input id="sb-p-job" style="' + inp + '" placeholder="bb lip cheek #03">' +
+        '<label class="m">ชื่องาน <span style="opacity:.7;font-weight:500">— แตะเลือกจากรายการได้</span></label><div id="sb-p-jobs" class="pjobs">' + pjChipsH() + '</div><input id="sb-p-job" style="' + inp + '" placeholder="bb lip cheek #03" autocomplete="off">' +
+        '<label class="m">เบอร์ <span style="opacity:.7;font-weight:500">— แตะเลือก จะต่อท้ายชื่องานเป็น #เบอร์</span></label><div id="sb-p-nums" class="pnums">' + pjNumsH() + '</div>' +
         '<label class="m">หน่วยของยอดงาน</label><div class="unitrow"><button type="button" data-punit="pcs" class="on">🔢 ชิ้น</button><button type="button" data-punit="g">⚖️ กรัม (bulk)</button></div>' +
         '<label class="m" id="sb-p-ql">ยอดงาน (ชิ้น)</label><input id="sb-p-qty" type="number" inputmode="numeric" style="' + inp + '" placeholder="14024">' +
         '<label class="m">บริษัท</label><div style="margin:4px 0 12px">' + coPickH('data-pco', preCo) + '</div>' +
         '<label class="m">ส่วนงานของบิลนี้</label><div style="margin:4px 0 12px">' + secPickH('data-psec', preSec) + '</div>' +
-        '<div id="sb-p-err" style="color:#dc2626;font-size:13px;min-height:18px"></div><button class="cta" data-a="pre-save">ยืนยัน</button></div>';
+        '<div id="sb-p-err" style="color:#dc2626;font-size:13px;min-height:18px"></div><button class="cta" data-a="pre-save">ยืนยัน</button><button type="button" class="cta alt" data-a="pre-save-next">ยืนยัน และลงเบอร์ถัดไป ➜</button></div>';
+      if (keep) { const ji = document.getElementById('sb-p-job'); if (ji) ji.value = preBase ? preBase + (preNum ? ' #' + preNum : '') : ''; const qi = document.getElementById('sb-p-qty'); if (qi && keep.qty) qi.value = keep.qty; setPreUnit(preUnit, preUnitMan); }
       dt.classList.add('on'); dt.scrollTop = 0; setTimeout(() => { const f = document.getElementById('sb-p-no'); if (f) f.focus(); }, 80);
     }
-    async function savePre() {
+    async function savePre(next) {
       const g = (i) => document.getElementById(i), er = g('sb-p-err');
       const no = normN(g('sb-p-no').value), mo = normN(g('sb-p-mo').value), job = g('sb-p-job').value.trim(), qty = Number(g('sb-p-qty').value);
       if (!no || !mo || !job || !(qty > 0)) { er.textContent = 'กรอกให้ครบ: เลขใบเบิก, MO, ชื่องาน, ยอดงาน'; return; }
@@ -7522,7 +7593,11 @@ html.jk-ios #sb-ov .seg button:active,html.jk-ios #sb-ov .chip:active,html.jk-io
       if (r.error && row.section && secMissing(r.error)) { secOK = false; secMap[row.bill_id] = sec; saveSecMap(); delete row.section; r = await sb.from('bill_status').insert(row); }
       if (r.error) { er.textContent = 'บันทึกไม่สำเร็จ: ' + r.error.message; return; }
       if (!rows.some((x) => x.bill_id === row.bill_id)) rows.push(Object.assign({ reason: '', packer_email: null, created_by: String((session && session.user && session.user.email) || '').toLowerCase(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }, row));
-      dt.classList.remove('on'); showToast('ลงใบเบิก ' + no + ' แล้ว', 'success'); if (open && view === 'list') render();
+      showToast('ลงใบเบิก ' + no + ' แล้ว', 'success'); if (open && view === 'list') render();
+      if (next) {
+        const sp = splitJob(job), nn = /^\d+$/.test(sp.num) ? pad2(Math.min(999, Number(sp.num) + 1)) : '';
+        showPre({ base: sp.base, num: nn, qty: qty, unit: preUnit, man: preUnitMan, co: preCo, sec: preSec });
+      } else dt.classList.remove('on');
     }
     function preBanner(on) {
       let b = document.getElementById('pre-banner');
@@ -8002,6 +8077,7 @@ html.jk-ios #sb-ov .seg button:active,html.jk-ios #sb-ov .chip:active,html.jk-io
       else if (a === 'a1') { if (t.dataset.p !== 'bills' && window.__a1Float) window.__a1Float(t.dataset.p); }
       else if (a === 'pre') { if (!can('create')) { showToast('บัญชีนี้ไม่มีสิทธิ์ลงใบเบิก — ขอสิทธิ์กับแอดมิน', 'error'); return; } showPre(); }
       else if (a === 'pre-save') { await savePre(); }
+      else if (a === 'pre-save-next') { await savePre(true); }
       else if (a === 'pre-photo') { const f = document.getElementById('sb-p-cam'); if (f) f.click(); }
       else if (a === 'pre-pick') { const f = document.getElementById('sb-p-pic'); if (f) f.click(); }
       else if (a === 'startpre') { await startPre(t.dataset.id); }
@@ -9361,17 +9437,15 @@ html.jk-ios #sb-ov .seg button:active,html.jk-ios #sb-ov .chip:active,html.jk-io
 
   // -----------------------------------------------------------------
   // Hide the boot loading screen and trigger the entrance animation.
-  // A minimum-display time (set by the loader script above, default
-  // 4.9s) keeps the loader on screen long enough for its own staged
-  // progress/status animation to finish, rather than cutting it off
-  // mid-way.
+  // เข้าแอปทันทีที่พร้อม (มีเวลาแสดงขั้นต่ำสั้นๆ จากสคริปต์หน้าโหลดด้านบน)
   // -----------------------------------------------------------------
   (function revealApp() {
     var loader = document.getElementById('app-loader');
     var meta = window.__jkosLoader || {};
-    var MIN_VISIBLE_MS = typeof meta.targetMs === 'number' ? meta.targetMs : 4900;
+    var MIN_VISIBLE_MS = typeof meta.targetMs === 'number' ? meta.targetMs : 900;
     var startedAt = typeof meta.start === 'number' ? meta.start : (window.performance && performance.now ? performance.now() : Date.now());
     function reveal() {
+      if (typeof meta.mark === 'function') { meta.mark('load'); meta.mark('app'); }
       var elapsed = (window.performance && performance.now ? performance.now() : Date.now()) - startedAt;
       var wait = Math.max(0, MIN_VISIBLE_MS - elapsed);
       setTimeout(function () {
@@ -9386,8 +9460,11 @@ html.jk-ios #sb-ov .seg button:active,html.jk-ios #sb-ov .chip:active,html.jk-io
         }
       }, wait);
     }
-    if (document.readyState === 'complete') reveal();
-    else window.addEventListener('load', reveal);
+    // ไม่รอทรัพยากรภายนอกทั้งหมด (window.load) — หน้าพร้อมใช้ตั้งแต่ประมวลผลหน้าเสร็จ
+    // รอฟอนต์แค่ไม่เกิน 1.5 วิ แล้วเข้าแอป เน็ตช้าก็ไม่ติดหน้าโหลด
+    var go = function () { if (go.d) return; go.d = 1; reveal(); };
+    try { if (document.fonts && document.fonts.ready) Promise.race([document.fonts.ready, new Promise(function (r) { setTimeout(r, 1500); })]).then(go, go); else go(); } catch (e) { go(); }
+    setTimeout(go, 1800);
   })();
 })();
 </script>
