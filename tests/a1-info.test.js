@@ -1,5 +1,5 @@
 const fs=require('fs'),vm=require('vm');
-const html=fs.readFileSync(require('path').join(__dirname,'index.html'),'utf8');
+const html=fs.readFileSync(require('path').join(__dirname,'..','index.html'),'utf8');
 const cut=(a,b)=>{const i=html.indexOf(a),j=html.indexOf(b);return html.slice(i,j+b.length)};
 const code=cut('/* A1W:begin','/* A1W:end */')+'\n'+cut('/* A1ITEM:begin','/* A1ITEM:end */')+'\n'+cut('/* A1INFO:begin','/* A1INFO:end */');
 const els={};const mk=id=>({id,value:'',innerHTML:'',hidden:false,firstChild:null,setAttribute(){},focus(){},blur(){},remove(){}});

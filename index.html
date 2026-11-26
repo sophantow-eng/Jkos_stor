@@ -6626,6 +6626,10 @@ html.jk-ios #sb-ov .seg button:active,html.jk-ios #sb-ov .chip:active,html.jk-io
 #sb-dt .pchip>button.x{padding:0 12px 0 4px;opacity:.55;font-size:14px}
 #sb-dt .pchip.on{background:var(--sb-brand);border-color:var(--sb-brand);color:#fff}
 #sb-dt .pchip.rec{border-style:dashed;font-weight:600}
+#sb-dt .pletters{flex:1 0 100%;display:flex;gap:6px;overflow-x:auto;padding:2px 0 6px;-webkit-overflow-scrolling:touch}
+#sb-dt .pletters button{flex:none;min-width:44px;min-height:44px;padding:0 12px;border-radius:12px;border:1.5px solid var(--sb-line2);background:var(--sb-card);color:var(--sb-ink);font:inherit;font-size:15px;font-weight:800;cursor:pointer}
+#sb-dt .pletters button.on{background:var(--sb-brand);border-color:var(--sb-brand);color:#fff}
+#sb-dt .padd.alt{border-style:solid;opacity:.85}
 #sb-dt .padd{min-height:44px;padding:0 16px;border-radius:999px;border:1.5px dashed var(--sb-brand);background:transparent;color:var(--sb-brand);font:inherit;font-size:15px;font-weight:800;cursor:pointer}
 #sb-dt .pnums{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin:4px 0 12px}
 #sb-dt .pnums button{min-height:46px;border-radius:12px;border:1.5px solid var(--sb-line2);background:var(--sb-card);color:var(--sb-ink);font:inherit;font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;cursor:pointer}
@@ -7204,15 +7208,38 @@ html.jk-ios #sb-ov .seg button:active,html.jk-ios #sb-ov .chip:active,html.jk-io
       const have = new Set(saved.map((x) => x.n.toLowerCase())), out = [], seen = new Set();
       rows.slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))).forEach((r) => {
         const b = splitJob(r.job_name).base; if (!b) return; const k = b.toLowerCase();
-        if (have.has(k) || seen.has(k) || out.length >= 8) return; seen.add(k); out.push(b);
+        if (have.has(k) || seen.has(k) || out.length >= 30) return; seen.add(k); out.push(b);
       });
       return out;
     }
+    let pjAll = false, pjLetter = '';
+    const PJ_SHOW = 6;
     function pjChipsH() {
       const sv = pjLoad(), rc = pjRecent(sv), cur = (preBase || '').toLowerCase();
-      let h = sv.map((x, i) => '<span class="pchip' + (x.n.toLowerCase() === cur ? ' on' : '') + '"><button type="button" data-pj="' + i + '">⭐ ' + esc(x.n) + '</button><button type="button" class="x" data-pjdel="' + i + '" aria-label="ลบ ' + esc(x.n) + ' ออกจากรายการ">✕</button></span>').join('');
-      h += rc.map((n, i) => '<span class="pchip rec' + (n.toLowerCase() === cur ? ' on' : '') + '"><button type="button" data-pjr="' + i + '" data-n="' + esc(n) + '">🕘 ' + esc(n) + '</button></span>').join('');
-      return (h || '<span class="phint">ยังไม่มีงานที่บันทึกไว้ — พิมพ์ชื่องานแล้วกด “เพิ่มงานไว้เลือก” ครั้งหน้าแตะเลือกได้เลย</span>') + '<button type="button" class="padd" data-a="pj-add">➕ เพิ่มงานไว้เลือก</button>';
+      // รวมรายการ (⭐ บันทึกไว้ + 🕘 ล่าสุด) เก็บ index เดิมไว้ให้แตะแล้วเลือกถูกตัว
+      let items = sv.map((x, i) => ({ n: x.n, s: 1, i })).concat(rc.map((n) => ({ n, s: 0 })));
+      const total = items.length, many = total > PJ_SHOW;
+      const typed = cur && !items.some((x) => x.n.toLowerCase() === cur);
+      let note = '';
+      if (typed) {          // กำลังพิมพ์ → เด้งเฉพาะงานที่ขึ้นต้น/มีตัวอักษรนั้น
+        const st = items.filter((x) => x.n.toLowerCase().startsWith(cur)), ct = items.filter((x) => !x.n.toLowerCase().startsWith(cur) && x.n.toLowerCase().includes(cur));
+        items = st.concat(ct).slice(0, 8);
+        note = items.length ? '' : '<span class="phint">ไม่พบงานที่ตรงกับ “' + esc(preBase) + '” — กด “เพิ่มงานไว้เลือก” เพื่อเก็บไว้</span>';
+      } else if (many) {
+        let letters = [];
+        items.forEach((x) => { const c = x.n.charAt(0).toUpperCase(); if (c && letters.indexOf(c) < 0) letters.push(c); });
+        letters.sort();
+        if (pjAll) {
+          const lt = '<div class="pletters" role="group" aria-label="กรองตามตัวอักษรแรก"><button type="button" data-pl=""' + (!pjLetter ? ' class="on"' : '') + '>ทั้งหมด</button>' + letters.map((c) => '<button type="button" data-pl="' + esc(c) + '"' + (c === pjLetter ? ' class="on"' : '') + '>' + esc(c) + '</button>').join('') + '</div>';
+          if (pjLetter) items = items.filter((x) => x.n.charAt(0).toUpperCase() === pjLetter);
+          note = lt;
+        } else items = items.slice(0, PJ_SHOW);
+      }
+      const h = items.map((x) => x.s
+        ? '<span class="pchip' + (x.n.toLowerCase() === cur ? ' on' : '') + '"><button type="button" data-pj="' + x.i + '">⭐ ' + esc(x.n) + '</button><button type="button" class="x" data-pjdel="' + x.i + '" aria-label="ลบ ' + esc(x.n) + ' ออกจากรายการ">✕</button></span>'
+        : '<span class="pchip rec' + (x.n.toLowerCase() === cur ? ' on' : '') + '"><button type="button" data-pjr="1" data-n="' + esc(x.n) + '">🕘 ' + esc(x.n) + '</button></span>').join('');
+      const more = (many && !typed) ? '<button type="button" class="padd alt" data-pl-toggle="1">' + (pjAll ? '▲ ย่อรายการ' : '▼ ดูทั้งหมด (' + total + ')') + '</button>' : '';
+      return note + (h || (total || typed ? '' : '<span class="phint">ยังไม่มีงานที่บันทึกไว้ — พิมพ์ชื่องานแล้วกด “เพิ่มงานไว้เลือก” ครั้งหน้าแตะเลือกได้เลย</span>')) + more + '<button type="button" class="padd" data-a="pj-add">➕ เพิ่มงานไว้เลือก</button>';
     }
     function pjNumsH() {
       let h = '';
@@ -7244,8 +7271,10 @@ html.jk-ios #sb-ov .seg button:active,html.jk-ios #sb-ov .chip:active,html.jk-io
     }
     dt.addEventListener('click', (e) => {
       const t = e.target; if (!t || !t.closest) return;
-      const del = t.closest('[data-pjdel]'), pj = t.closest('[data-pj]'), pr = t.closest('[data-pjr]'), pn = t.closest('[data-pn]');
+      const del = t.closest('[data-pjdel]'), pj = t.closest('[data-pj]'), pr = t.closest('[data-pjr]'), pn = t.closest('[data-pn]'), pl = t.closest('[data-pl]'), plt = t.closest('[data-pl-toggle]');
       if (del) { const a = pjLoad(), x = a[+del.dataset.pjdel]; if (x && confirm('ลบ “' + x.n + '” ออกจากรายการงาน?')) { a.splice(+del.dataset.pjdel, 1); pjSave(a); if (preBase.toLowerCase() === x.n.toLowerCase()) preBase = ''; pjPaint(); } }
+      else if (plt) { pjAll = !pjAll; pjLetter = ''; pjPaint(); }
+      else if (pl) { pjLetter = pl.dataset.pl; pjPaint(); }
       else if (pj) { const x = pjLoad()[+pj.dataset.pj]; if (x) pjPickPreset(x); }
       else if (pr) { pjPickPreset({ n: pr.dataset.n }); }
       else if (pn) { const v = pn.dataset.pn; const cur = splitJob((document.getElementById('sb-p-job') || {}).value); if (!preBase) preBase = cur.base; preNum = (v && v === preNum) ? '' : v; pjApply(false); }
@@ -7729,10 +7758,16 @@ html.jk-ios #sb-ov .seg button:active,html.jk-ios #sb-ov .chip:active,html.jk-io
       if (r.error) showToast('โหลดสถานะไม่สำเร็จ: ' + r.error.message, 'error');
       subscribe(); presence(); render();
     }
-    window.__sbOpenGuest = async () => { open = true; ov.classList.add('on'); ov.innerHTML = '<div class="w"><div class="sbmsg"><i class="sbspin"></i><p>กำลังเชื่อมต่อ…</p></div></div>'; try { await ensure(); if (!session) startGuest(); else { await refresh(); } } catch (e) { ov.innerHTML = '<div class="w"><div class="sbmsg err"><p><b>เชื่อมต่อเซิร์ฟเวอร์ไม่ได้</b><span>เช็กอินเทอร์เน็ตแล้วลองใหม่อีกครั้ง</span></p><div class="sbact"><button type="button" class="sbretry" data-a="retry">ลองใหม่</button><button type="button" data-a="close">ปิด</button></div></div></div>'; } };
+    // สเกเลตันหน้าสถานะจัดของ: โครงหน้าจริงโผล่ทันที แล้วข้อมูลค่อยเติม (แทนวงกลมหมุน)
+    const skH = () => { const card = '<div class="skc"><i class="skl w40"></i><i class="skl w70"></i><div class="skr"><i class="skl pill"></i><i class="skl w30"></i></div></div>';
+      return '<div class="w sk" role="status" aria-busy="true" aria-live="polite"><span class="sr-only">กำลังโหลดสถานะจัดของ</span>' +
+        '<div class="hd"><i class="skl w50 h22"></i><i class="skl btn"></i></div>' +
+        '<div class="skchips"><i class="skl chip"></i><i class="skl chip"></i><i class="skl chip"></i><i class="skl chip"></i></div>' +
+        '<i class="skl bar"></i>' + card + card + card + card + '<p class="sknote">กำลังเชื่อมต่อฐานข้อมูล…</p></div>'; };
+    window.__sbOpenGuest = async () => { open = true; ov.classList.add('on'); ov.innerHTML = skH(); try { await ensure(); if (!session) startGuest(); else { await refresh(); } } catch (e) { ov.innerHTML = '<div class="w"><div class="sbmsg err"><p><b>เชื่อมต่อเซิร์ฟเวอร์ไม่ได้</b><span>เช็กอินเทอร์เน็ตแล้วลองใหม่อีกครั้ง</span></p><div class="sbact"><button type="button" class="sbretry" data-a="retry">ลองใหม่</button><button type="button" data-a="close">ปิด</button></div></div></div>'; } };
     if (/#guest/.test(location.hash)) setTimeout(() => window.__sbOpenGuest(), 600);
     async function openBoard() {
-      open = true; ov.classList.add('on'); ov.innerHTML = '<div class="w"><div class="sbmsg"><i class="sbspin"></i><p>กำลังเชื่อมต่อ…</p></div></div>';
+      open = true; ov.classList.add('on'); ov.innerHTML = skH();
       try { await ensure(); await refresh(); } catch (e) { ov.innerHTML = '<div class="w"><div class="sbmsg err"><p><b>เชื่อมต่อเซิร์ฟเวอร์ไม่ได้</b><span>เช็กอินเทอร์เน็ตแล้วลองใหม่อีกครั้ง</span></p><div class="sbact"><button type="button" class="sbretry" data-a="retry">ลองใหม่</button><button type="button" data-a="close">ปิด</button></div></div></div>'; }
     }
     function loginHtml() {
@@ -14618,6 +14653,55 @@ html:has(#sb-ov.on),html:has(#sb-dt.on),html:has(.jk-ov-lock){overflow:hidden!im
 #sb-ov .sbact button{min-height:46px;min-width:110px;padding:0 20px;border-radius:12px;border:1px solid var(--sb-line2,#574433);background:var(--sb-card,#211912);color:var(--sb-ink,#f3e9dc);font-size:15px;font-weight:600}
 #sb-ov .sbact .sbretry{background:#ffae3b;border-color:#ffae3b;color:#1b1007}
 @media (prefers-reduced-motion:reduce){#sb-ov .sbspin{animation-duration:2s}}
+</style>
+<style id="jk-pro">
+/* ===== JKOS · ขัดเกลาดีไซน์ (เลเยอร์ท้ายสุด — ไม่เปลี่ยนโครงสร้าง/ฟังก์ชัน) ===== */
+html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}
+::selection{background:color-mix(in srgb,var(--hot,#ff9a3d) 38%,transparent)}
+*{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--ink-faint,#8a8a8a) 50%,transparent) transparent}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--ink-faint,#8a8a8a) 50%,transparent);border-radius:8px;border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-track{background:transparent}
+:where(a,button,[role=button],summary):focus-visible{outline:2px solid var(--hot,#ff9a3d);outline-offset:2px;border-radius:10px}
+:where(input,select,textarea):focus-visible{outline:none;border-color:var(--hot,#ff9a3d)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--hot,#ff9a3d) 32%,transparent)}
+html body :is(.card,.stat-card){transition:border-color .18s ease,box-shadow .18s ease}
+html body .toast{border-radius:14px;box-shadow:0 10px 28px rgba(0,0,0,.35);backdrop-filter:blur(6px)}
+html body .page-title{letter-spacing:-.01em}
+html body .page-subtitle{color:var(--ink-soft,var(--ink-faint,#9a9a9a))}
+html body :is(.btn,.cta,button.btn-primary){transition:transform .08s ease,box-shadow .15s ease,filter .15s ease}
+@media (hover:hover){html body :is(.btn,.btn-primary):not(:disabled):hover{filter:brightness(1.06)}}
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* หัวหน้าบนมือถือ: กระชับ อ่านง่าย — ปุ่มค้นหา+ตั้งค่าอยู่แถวเดียว */
+@media (max-width:640px){
+  html body .main-header{padding-top:10px;padding-bottom:12px}
+  html body .page-subtitle{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;line-height:1.4}
+  html body .header-actions{display:flex;flex-wrap:nowrap;align-items:center;gap:8px;width:100%}
+  html body .header-actions .today-badge{flex:none;min-height:44px;padding:0 12px;white-space:nowrap}
+  html body .header-actions .cmdk-trigger{flex:1 1 0;min-width:0;min-height:44px}
+  html body .header-actions .cmdk-trigger span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  html body .header-actions .cmdk-trigger kbd{display:none}
+  html body .header-actions .theme-switcher{flex:none}
+  html body .header-actions .theme-toggle-label{display:none}
+  html body .header-actions .theme-toggle-btn{width:44px;min-width:44px;height:44px;padding:0;justify-content:center}
+}
+
+/* ===== สเกเลตันหน้าสถานะจัดของ ===== */
+#sb-ov .skl{display:block;border-radius:8px;background:linear-gradient(90deg,var(--sb-line,rgba(255,255,255,.08)) 25%,color-mix(in srgb,var(--sb-line,rgba(255,255,255,.08)) 40%,var(--sb-soft,#888)) 50%,var(--sb-line,rgba(255,255,255,.08)) 75%);background-size:220% 100%;animation:sklsh 1.4s ease-in-out infinite}
+#sb-ov .skl.w30{width:30%;height:12px}#sb-ov .skl.w40{width:42%;height:16px}#sb-ov .skl.w50{width:48%}#sb-ov .skl.w70{width:76%;height:12px;margin-top:10px}
+#sb-ov .skl.h22{height:22px}#sb-ov .skl.btn{width:64px;height:40px;border-radius:12px}
+#sb-ov .skl.chip{flex:none;width:84px;height:40px;border-radius:999px}
+#sb-ov .skl.bar{height:48px;border-radius:14px;margin:4px 0 14px}
+#sb-ov .skl.pill{width:92px;height:26px;border-radius:999px}
+#sb-ov .sk{padding-top:max(18px,env(safe-area-inset-top))}
+#sb-ov .sk .hd{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}
+#sb-ov .skchips{display:flex;gap:8px;overflow:hidden;margin:6px 0 12px}
+#sb-ov .skc{position:relative;background:var(--sb-card);border:1px solid var(--sb-line);border-radius:var(--rc,16px);padding:16px 14px 14px 20px;margin:0 0 10px;overflow:hidden}
+#sb-ov .skc::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--sb-line)}
+#sb-ov .skr{display:flex;justify-content:space-between;align-items:center;margin-top:16px}
+#sb-ov .sknote{text-align:center;color:var(--sb-soft,#9a9a9a);font-size:13px;margin:14px 0 0}
+@keyframes sklsh{0%{background-position:120% 0}100%{background-position:-120% 0}}
+@media (prefers-reduced-motion:reduce){#sb-ov .skl{animation:none}}
 </style>
 </body>
 </html>
