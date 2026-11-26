@@ -1,7 +1,7 @@
-/* ทดสอบหน้า “งานโค้ดนี้อยู่ที่ไหน” — รัน: node a1-where.test.js  (อ่าน index.html ในโฟลเดอร์เดียวกัน)
+/* ทดสอบหน้า “งานโค้ดนี้อยู่ที่ไหน” — รัน: node tests/a1-where.test.js  (อ่าน index.html ที่โฟลเดอร์หลัก)
    ไม่ต่อ Supabase จริง: ใช้ client จำลองที่คืนข้อมูลตามโครงสร้างจริงของ a1_item_summary และ a1_jobs */
 const fs = require('fs'), vm = require('vm'), path = require('path');
-const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const cut = (a, b) => { const i = html.indexOf(a), j = html.indexOf(b); if (i < 0 || j < 0) throw new Error('marker missing ' + a); return html.slice(i, j + b.length); };
 const code = cut('/* A1W:begin', '/* A1W:end */') + '\n' + cut('/* A1ITEM:begin', '/* A1ITEM:end */');
 
