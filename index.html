@@ -14815,7 +14815,8 @@ html body :is(.btn,.cta,button.btn-primary){transition:transform .08s ease,box-s
     d=document.createElement('div'); d.id=ID; d.setAttribute('aria-hidden','true'); d.innerHTML=FX;
     if(!isFull){ d.classList.add('cameo'); var sn=d.querySelector('.xm-snow'); if(sn) d.removeChild(sn); }
     document.body.appendChild(d);
-    isFull ? full(5000) : cameo(30000+Math.random()*30000);
+    if(isFull) full(5000);
+    else { cameo(100000+Math.random()*80000); setTimeout(function(){ fly(); stroll(); }, 800); } /* เปิดมาเห็นซานต้าทันที */
   }
   function unmount(){ clearTimeout(timer); var d=document.getElementById(ID); if(d&&d.parentNode) d.parentNode.removeChild(d); }
   function sync(){ try{ if(document.documentElement.getAttribute('data-theme')==='xmas') mount(true); else if(still&&still.matches) unmount(); else mount(false); }catch(e){} }
